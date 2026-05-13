@@ -54,8 +54,14 @@ pub async fn handle(
     let providers = state.config.providers_for(proxy_name);
 
     match state.matcher.is_blocked(ip, providers) {
-        Some(provider) => Json(PluginResponse::block(format!("IP blocked: {}", provider))),
-        None => Json(PluginResponse::allow()),
+        Some(provider) => {
+            tracing::info!(proxy = proxy_name, ip = %ip, provider, "blocked");
+            Json(PluginResponse::block(format!("IP blocked: {}", provider)))
+        }
+        None => {
+            tracing::debug!(proxy = proxy_name, ip = %ip, "allowed");
+            Json(PluginResponse::allow())
+        }
     }
 }
 
@@ -131,5 +137,28 @@ mod tests {
         let resp = post_json(app, body).await;
         assert_eq!(resp["reject"], true);
         assert_eq!(resp["reject_reason"], "invalid remote address");
+    }
+
+    #[tokio::test]
+    async fn per_proxy_override_blocks_ip() {
+        use crate::config::ProxyConfig;
+        let mut proxies = HashMap::new();
+        proxies.insert(
+            "restricted".to_string(),
+            ProxyConfig { block: vec!["private".into()] },
+        );
+        let config = Config {
+            listen: "127.0.0.1:7200".into(),
+            block: vec![],  // global allows everything
+            proxies,
+        };
+        let state = Arc::new(AppState {
+            config,
+            matcher: Matcher::build(),
+        });
+        let app = Router::new().route("/handler", post(handle)).with_state(state);
+        let body = r#"{"version":"0.1.0","op":"NewUserConn","content":{"proxy_name":"restricted","proxy_type":"tcp","remote_addr":"10.0.0.1:12345","user":{}}}"#;
+        let resp = post_json(app, body).await;
+        assert_eq!(resp["reject"], true);
     }
 }

@@ -40,7 +40,16 @@ impl Matcher {
         let mut ranges: HashMap<String, Vec<IpNet>> = HashMap::new();
         for name in names {
             if let Some(strs) = provider_strs(name) {
-                let nets = strs.iter().filter_map(|s| s.parse().ok()).collect();
+                let nets = strs
+                    .iter()
+                    .filter_map(|s| match s.parse() {
+                        Ok(net) => Some(net),
+                        Err(_) => {
+                            tracing::warn!("skipping unparseable CIDR: {}", s);
+                            None
+                        }
+                    })
+                    .collect();
                 ranges.insert(name.to_string(), nets);
             }
         }
