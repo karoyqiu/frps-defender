@@ -141,6 +141,32 @@ path = /handler
 ops = NewUserConn
 ```
 
+## Systemd Service Example
+
+```ini
+[Unit]
+Description=frps-defender IP blocking plugin
+After=network.target frps.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/frps-defender --config /etc/frps-defender/config.json
+Restart=on-failure
+RestartSec=5s
+User=nobody
+Group=nobody
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Install to `/etc/systemd/system/frps-defender.service`, then:
+
+```bash
+systemctl daemon-reload
+systemctl enable --now frps-defender
+```
+
 ## Out of Scope (Stage 1)
 
 - Auth token validation
