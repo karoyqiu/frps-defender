@@ -38,7 +38,16 @@ frps  →  POST /handler  →  frps-defender (axum HTTP server)
 - `axum` + `tokio` — async HTTP server
 - `serde` + `serde_json` — JSON ser/de
 - `ipnet` — CIDR parsing and matching
+- `clap` — CLI argument parsing
 - `tracing` — structured logging
+
+## CLI
+
+```
+frps-defender [--config <path>]
+```
+
+`--config` defaults to `/etc/frps-defender/config.json`. If the file does not exist at the default path, all config defaults apply silently. If an explicit path is given and the file does not exist, the program exits with an error.
 
 ## Config Schema
 
