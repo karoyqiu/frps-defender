@@ -1,0 +1,14 @@
+[Unit]
+Description=frps-defender IP blocking plugin
+After=network.target frps.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/frps-defender --config /etc/frps-defender/config.json
+Restart=on-failure
+RestartSec=5s
+User=nobody
+Group=nobody
+
+[Install]
+WantedBy=multi-user.target

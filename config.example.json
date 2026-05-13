@@ -1,0 +1,9 @@
+{
+  "listen": "127.0.0.1:7200",
+  "block": ["all"],
+  "proxies": {
+    "ssh-proxy": {
+      "block": ["aws", "cloudflare", "vpn"]
+    }
+  }
+}
