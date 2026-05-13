@@ -1,1 +1,1 @@
-// populated by build.rs codegen
+include!(concat!(env!("OUT_DIR"), "/ranges.rs"));
