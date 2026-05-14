@@ -31,12 +31,12 @@ New optional fields in `config.json`:
 ```json
 {
   "ipdata_api_key": "your-key-here",
-  "db_path": "/var/lib/frps-defender/blocks.db"
+  "db_path": "/var/tmp/frps-defender/blocks.db"
 }
 ```
 
 - `ipdata_api_key`: if absent, ipdata check is skipped entirely
-- `db_path`: defaults to `/var/lib/frps-defender/blocks.db`
+- `db_path`: defaults to `/var/tmp/frps-defender/blocks.db`
 
 ## Data Model
 
