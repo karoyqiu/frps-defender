@@ -33,7 +33,11 @@ async fn main() -> anyhow::Result<()> {
 
     let listen: std::net::SocketAddr = config.listen.parse()?;
     let matcher = matcher::Matcher::build();
-    let state = Arc::new(AppState { config, matcher });
+    let ipdata_client = config.ipdata_api_key.as_deref().map(|key| {
+        Arc::new(ipdata::IpData::new(key))
+    });
+    let dynblock = Arc::new(dynblock::DynBlockStore::open(&config.db_path)?);
+    let state = Arc::new(AppState { config, matcher, dynblock, ipdata: ipdata_client });
 
     let app = Router::new()
         .route("/handler", post(handler::handle))

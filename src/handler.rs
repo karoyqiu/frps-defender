@@ -3,11 +3,13 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use crate::{config::Config, matcher::Matcher};
+use crate::{config::Config, dynblock::DynBlockStore, matcher::Matcher};
 
 pub struct AppState {
     pub config: Config,
     pub matcher: Matcher,
+    pub dynblock: Arc<DynBlockStore>,
+    pub ipdata: Option<Arc<ipdata::IpData>>,
 }
 
 #[derive(Deserialize)]
@@ -51,18 +53,63 @@ pub async fn handle(
         Err(_) => return Json(PluginResponse::block("invalid remote address")),
     };
 
+    // Step 1: static compile-time CIDR check
     let providers = state.config.providers_for(proxy_name);
+    if let Some(provider) = state.matcher.is_blocked(ip, providers) {
+        tracing::info!(proxy = proxy_name, ip = %ip, provider, "blocked");
+        return Json(PluginResponse::block(format!("IP blocked: {}", provider)));
+    }
 
-    match state.matcher.is_blocked(ip, providers) {
-        Some(provider) => {
-            tracing::info!(proxy = proxy_name, ip = %ip, provider, "blocked");
-            Json(PluginResponse::block(format!("IP blocked: {}", provider)))
-        }
-        None => {
-            tracing::debug!(proxy = proxy_name, ip = %ip, "allowed");
-            Json(PluginResponse::allow())
+    // Step 2: dynamic SQLite-backed block list
+    if state.dynblock.is_blocked(ip) {
+        tracing::info!(proxy = proxy_name, ip = %ip, "blocked by dynamic list");
+        return Json(PluginResponse::block("IP blocked: dynamic"));
+    }
+
+    // Step 3: ipdata threat check (skipped if no API key configured)
+    if let Some(ipdata_client) = &state.ipdata {
+        match ipdata_client.lookup(&ip.to_string()).await {
+            Ok(info) => {
+                let is_threat = info.threat.as_ref().map_or(false, |t| {
+                    t.is_tor
+                        || t.is_proxy
+                        || t.is_known_attacker
+                        || t.is_known_abuser
+                        || t.is_threat
+                        || t.is_bogon
+                });
+                if is_threat {
+                    match &info.asn {
+                        Some(asn) if !asn.route.is_empty() => {
+                            if let Err(e) = state.dynblock.add(
+                                &asn.route,
+                                &asn.asn,
+                                &asn.name,
+                                "threat detected",
+                            ) {
+                                tracing::error!(
+                                    cidr = asn.route,
+                                    error = %e,
+                                    "failed to persist blocked route"
+                                );
+                            }
+                        }
+                        _ => {
+                            state.dynblock.add_ephemeral(ip);
+                        }
+                    }
+                    tracing::info!(proxy = proxy_name, ip = %ip, "blocked: threat detected");
+                    return Json(PluginResponse::block("IP blocked: threat detected"));
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, ip = %ip, "ipdata lookup failed, allowing");
+            }
         }
     }
+
+    tracing::debug!(proxy = proxy_name, ip = %ip, "allowed");
+    Json(PluginResponse::allow())
 }
 
 #[cfg(test)]
@@ -80,11 +127,13 @@ mod tests {
             block,
             proxies: HashMap::new(),
             ipdata_api_key: None,
-            db_path: "/var/tmp/frps-defender/blocks.db".into(),
+            db_path: String::new(),
         };
         let state = Arc::new(AppState {
             config,
             matcher: Matcher::build(),
+            dynblock: Arc::new(crate::dynblock::DynBlockStore::open(":memory:").unwrap()),
+            ipdata: None,
         });
         Router::new().route("/handler", post(handle)).with_state(state)
     }
@@ -151,18 +200,55 @@ mod tests {
         );
         let config = Config {
             listen: "127.0.0.1:7200".into(),
-            block: vec![],  // global allows everything
+            block: vec![],
             proxies,
             ipdata_api_key: None,
-            db_path: "/var/tmp/frps-defender/blocks.db".into(),
+            db_path: String::new(),
         };
         let state = Arc::new(AppState {
             config,
             matcher: Matcher::build(),
+            dynblock: Arc::new(crate::dynblock::DynBlockStore::open(":memory:").unwrap()),
+            ipdata: None,
         });
         let app = Router::new().route("/handler", post(handle)).with_state(state);
         let body = r#"{"version":"0.1.0","op":"NewUserConn","content":{"proxy_name":"restricted","proxy_type":"tcp","remote_addr":"10.0.0.1:12345","user":{}}}"#;
         let resp = post_json(app, body).await;
         assert_eq!(resp["reject"], true);
+    }
+
+    #[tokio::test]
+    async fn dynblock_blocks_ip() {
+        let dynblock = Arc::new(crate::dynblock::DynBlockStore::open(":memory:").unwrap());
+        dynblock
+            .add("203.0.113.0/24", "AS64496", "Test Net", "threat detected")
+            .unwrap();
+        let config = Config {
+            listen: "127.0.0.1:7200".into(),
+            block: vec![],
+            proxies: HashMap::new(),
+            ipdata_api_key: None,
+            db_path: String::new(),
+        };
+        let state = Arc::new(AppState {
+            config,
+            matcher: Matcher::build(),
+            dynblock,
+            ipdata: None,
+        });
+        let app = Router::new().route("/handler", post(handle)).with_state(state);
+        let body = r#"{"version":"0.1.0","op":"NewUserConn","content":{"proxy_name":"test","proxy_type":"tcp","remote_addr":"203.0.113.50:12345","user":{}}}"#;
+        let resp = post_json(app, body).await;
+        assert_eq!(resp["reject"], true);
+        assert_eq!(resp["reject_reason"], "IP blocked: dynamic");
+    }
+
+    #[tokio::test]
+    async fn ipdata_none_allows_clean_ip() {
+        let app = make_app(vec!["private".into()]);
+        let body = r#"{"version":"0.1.0","op":"NewUserConn","content":{"proxy_name":"test","proxy_type":"tcp","remote_addr":"8.8.8.8:12345","user":{}}}"#;
+        let resp = post_json(app, body).await;
+        assert_eq!(resp["reject"], false);
+        assert_eq!(resp["unchange"], true);
     }
 }
