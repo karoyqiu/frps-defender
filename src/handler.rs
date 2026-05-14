@@ -79,6 +79,8 @@ mod tests {
             listen: "127.0.0.1:7200".into(),
             block,
             proxies: HashMap::new(),
+            ipdata_api_key: None,
+            db_path: "/var/tmp/frps-defender/blocks.db".into(),
         };
         let state = Arc::new(AppState {
             config,
@@ -151,6 +153,8 @@ mod tests {
             listen: "127.0.0.1:7200".into(),
             block: vec![],  // global allows everything
             proxies,
+            ipdata_api_key: None,
+            db_path: "/var/tmp/frps-defender/blocks.db".into(),
         };
         let state = Arc::new(AppState {
             config,

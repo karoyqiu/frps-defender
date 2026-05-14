@@ -10,6 +10,10 @@ fn default_block() -> Vec<String> {
     vec!["all".into()]
 }
 
+fn default_db_path() -> String {
+    "/var/tmp/frps-defender/blocks.db".to_string()
+}
+
 #[derive(Deserialize)]
 pub struct ProxyConfig {
     pub block: Vec<String>,
@@ -23,6 +27,10 @@ pub struct Config {
     pub block: Vec<String>,
     #[serde(default)]
     pub proxies: HashMap<String, ProxyConfig>,
+    #[serde(default)]
+    pub ipdata_api_key: Option<String>,
+    #[serde(default = "default_db_path")]
+    pub db_path: String,
 }
 
 impl Default for Config {
@@ -31,6 +39,8 @@ impl Default for Config {
             listen: default_listen(),
             block: default_block(),
             proxies: HashMap::new(),
+            ipdata_api_key: None,
+            db_path: default_db_path(),
         }
     }
 }
@@ -96,5 +106,35 @@ mod tests {
         let config = Config::load(f.path(), true).unwrap();
         assert_eq!(config.providers_for("ssh"), &["vpn"]);
         assert_eq!(config.providers_for("other"), &["aws"]);
+    }
+
+    #[test]
+    fn ipdata_api_key_loads_from_file() {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, r#"{{"ipdata_api_key":"test-key-123"}}"#).unwrap();
+        let config = Config::load(f.path(), true).unwrap();
+        assert_eq!(config.ipdata_api_key.as_deref(), Some("test-key-123"));
+    }
+
+    #[test]
+    fn ipdata_api_key_defaults_to_none() {
+        let path = Path::new("/nonexistent/path/config.json");
+        let config = Config::load(path, false).unwrap();
+        assert!(config.ipdata_api_key.is_none());
+    }
+
+    #[test]
+    fn db_path_defaults_correctly() {
+        let path = Path::new("/nonexistent/path/config.json");
+        let config = Config::load(path, false).unwrap();
+        assert_eq!(config.db_path, "/var/tmp/frps-defender/blocks.db");
+    }
+
+    #[test]
+    fn db_path_loads_from_file() {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, r#"{{"db_path":"/custom/path/blocks.db"}}"#).unwrap();
+        let config = Config::load(f.path(), true).unwrap();
+        assert_eq!(config.db_path, "/custom/path/blocks.db");
     }
 }
