@@ -1,6 +1,7 @@
 mod config;
 mod dynblock;
 mod handler;
+mod ipdata;
 mod matcher;
 mod ranges;
 
@@ -34,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
     let listen: std::net::SocketAddr = config.listen.parse()?;
     let matcher = matcher::Matcher::build();
     let ipdata_client = config.ipdata_api_key.as_deref().map(|key| {
-        Arc::new(ipdata::IpData::new(key))
+        Arc::new(ipdata::IpDataClient::new(key))
     });
     let dynblock = Arc::new(dynblock::DynBlockStore::open(&config.db_path)?);
     let state = Arc::new(AppState { config, matcher, dynblock, ipdata: ipdata_client });

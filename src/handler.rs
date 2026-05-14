@@ -3,13 +3,13 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use crate::{config::Config, dynblock::DynBlockStore, matcher::Matcher};
+use crate::{config::Config, dynblock::DynBlockStore, ipdata::IpDataClient, matcher::Matcher};
 
 pub struct AppState {
     pub config: Config,
     pub matcher: Matcher,
     pub dynblock: Arc<DynBlockStore>,
-    pub ipdata: Option<Arc<ipdata::IpData>>,
+    pub ipdata: Option<Arc<IpDataClient>>,
 }
 
 #[derive(Deserialize)]
@@ -68,7 +68,7 @@ pub async fn handle(
 
     // Step 3: ipdata threat check (skipped if no API key configured)
     if let Some(ipdata_client) = &state.ipdata {
-        match ipdata_client.lookup(&ip.to_string()).await {
+        match ipdata_client.lookup(ip).await {
             Ok(info) => {
                 let is_threat = info.threat.as_ref().is_some_and(|t| {
                     t.is_tor
