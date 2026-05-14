@@ -72,7 +72,11 @@ pub async fn handle(
             Ok(info) => {
                 let is_threat = info.threat.as_ref().is_some_and(|t| {
                     t.is_tor
+                        || t.is_vpn
+                        || t.is_icloud_relay
                         || t.is_proxy
+                        || t.is_datacenter
+                        || t.is_anonymous
                         || t.is_known_attacker
                         || t.is_known_abuser
                         || t.is_threat

@@ -20,7 +20,15 @@ pub struct Threat {
     #[serde(default)]
     pub is_tor: bool,
     #[serde(default)]
+    pub is_vpn: bool,
+    #[serde(default)]
+    pub is_icloud_relay: bool,
+    #[serde(default)]
     pub is_proxy: bool,
+    #[serde(default)]
+    pub is_datacenter: bool,
+    #[serde(default)]
+    pub is_anonymous: bool,
     #[serde(default)]
     pub is_known_attacker: bool,
     #[serde(default)]
