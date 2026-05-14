@@ -34,19 +34,42 @@ frps → POST /handler → handler::handle
          │
          ├─ op != "NewUserConn" → allow (unchange: true)
          ├─ invalid remote_addr → reject ("invalid remote address")
-         └─ check IP → matcher::Matcher::is_blocked(ip, providers)
-                           │
-                           ├─ match → reject ("IP blocked: <provider>")
-                           └─ no match → allow (unchange: true)
+         ├─ 1. matcher::Matcher::is_blocked(ip, providers)   ← static compile-time CIDRs
+         │        └─ match → reject ("IP blocked: <provider>")
+         ├─ 2. DynBlockStore::is_blocked(ip)                 ← dynamic SQLite-backed CIDRs
+         │        └─ match → reject ("IP blocked: dynamic")
+         └─ 3. ipdata::IpData::lookup(ip)                    ← threat check (if api key set)
+                   ├─ threat=true, asn present → add asn.route to SQLite+memory → reject
+                   ├─ threat=true, asn absent  → add /32 to memory only → reject
+                   ├─ threat=false → allow (unchange: true)
+                   └─ error → warn, allow (unchange: true)
 ```
 
-`AppState` (in `handler.rs`) holds an `Arc<Config>` + `Arc<Matcher>` shared across all requests.
+`AppState` (in `handler.rs`) holds `Config`, `Matcher`, `Arc<DynBlockStore>`, and `Option<Arc<ipdata::IpData>>` shared across all requests.
 
 ### Config resolution
 
 `Config::providers_for(proxy_name)` returns the per-proxy block list if configured, otherwise the global `block` list. Default: `["all"]` (blocks every embedded provider).
 
 Config file is optional; missing default path (`/etc/frps-defender/config.json`) → use defaults. Missing explicit `--config` path → error.
+
+### Config example
+
+```json
+{
+  "listen": "0.0.0.0:7200",
+  "block": ["all"],
+  "ipdata_api_key": "your-key-here",
+  "db_path": "/var/tmp/frps-defender/blocks.db",
+  "proxies": {
+    "ssh-proxy": {
+      "block": ["private"]
+    }
+  }
+}
+```
+
+`ipdata_api_key` — optional; omit to disable threat detection. `db_path` — defaults to `/var/tmp/frps-defender/blocks.db` (writable by `nobody`).
 
 ### Provider names
 
