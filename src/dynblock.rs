@@ -47,12 +47,14 @@ impl DynBlockStore {
 
     pub fn add(&self, cidr: &str, asn: &str, asn_name: &str, reason: &str) -> Result<()> {
         let net: IpNet = cidr.parse()?;
-        self.conn.lock().unwrap().execute(
+        let changed = self.conn.lock().unwrap().execute(
             "INSERT OR IGNORE INTO blocked_routes (cidr, asn, asn_name, reason) \
              VALUES (?1, ?2, ?3, ?4)",
             params![cidr, asn, asn_name, reason],
         )?;
-        self.nets.write().unwrap().push(net);
+        if changed > 0 {
+            self.nets.write().unwrap().push(net);
+        }
         Ok(())
     }
 

@@ -70,7 +70,7 @@ pub async fn handle(
     if let Some(ipdata_client) = &state.ipdata {
         match ipdata_client.lookup(&ip.to_string()).await {
             Ok(info) => {
-                let is_threat = info.threat.as_ref().map_or(false, |t| {
+                let is_threat = info.threat.as_ref().is_some_and(|t| {
                     t.is_tor
                         || t.is_proxy
                         || t.is_known_attacker
