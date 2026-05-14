@@ -1,6 +1,8 @@
 {
   "listen": "127.0.0.1:7200",
   "block": ["all"],
+  "ipdata_api_key": "your-key-here",
+  "db_path": "/var/tmp/frps-defender/blocks.db",
   "proxies": {
     "ssh-proxy": {
       "block": ["aws", "cloudflare", "vpn"]
